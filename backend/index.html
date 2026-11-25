@@ -1,66 +1,318 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    <script src="/socket.io/socket.io.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Room Chat</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      display: grid;
+      min-height: 100vh;
+      margin: 0;
+      padding: 24px;
+      place-items: center;
+      background: #f1f5f9;
+      color: #172033;
+      font: 16px/1.5 system-ui, sans-serif;
+    }
+
+    .chat {
+      display: flex;
+      width: min(100%, 560px);
+      height: min(720px, calc(100vh - 48px));
+      min-height: 420px;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #dbe3ee;
+      border-radius: 16px;
+      background: white;
+      box-shadow: 0 16px 40px rgb(15 23 42 / 10%);
+    }
+
+    header {
+      padding: 24px;
+      border-bottom: 1px solid #e8edf4;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.4rem;
+    }
+
+    .connection {
+      margin: 4px 0 0;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+
+    .room-controls,
+    .composer {
+      display: flex;
+      gap: 8px;
+      padding: 16px 24px;
+    }
+
+    .room-controls {
+      border-bottom: 1px solid #e8edf4;
+    }
+
+    input {
+      min-width: 0;
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font: inherit;
+    }
+
+    input:focus {
+      border-color: #2563eb;
+      outline: 2px solid #bfdbfe;
+    }
+
+    button {
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 8px;
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 600;
+    }
+
+    button.secondary {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    button:disabled,
+    input:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .room-status {
+      min-height: 24px;
+      margin: 12px 24px 0;
+      color: #475569;
+      font-size: 0.9rem;
+    }
+
+    .messages {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      margin: 0;
+      padding: 16px 24px;
+      list-style: none;
+    }
+
+    .messages li {
+      max-width: 85%;
+      align-self: flex-start;
+      padding: 9px 12px;
+      border-radius: 12px 12px 12px 2px;
+      background: #f1f5f9;
+      overflow-wrap: anywhere;
+    }
+
+    .messages li.own {
+      align-self: flex-end;
+      border-radius: 12px 12px 2px 12px;
+      background: #dbeafe;
+    }
+
+    .messages li.system {
+      align-self: center;
+      background: transparent;
+      color: #64748b;
+      font-size: 0.85rem;
+    }
+
+    .composer {
+      border-top: 1px solid #e8edf4;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 0;
+      }
+
+      .chat {
+        height: 100vh;
+        min-height: 0;
+        border: 0;
+        border-radius: 0;
+      }
+
+      header {
+        padding: 18px;
+      }
+
+      .room-controls,
+      .composer {
+        padding: 12px 18px;
+      }
+
+      .room-status {
+        margin-right: 18px;
+        margin-left: 18px;
+      }
+
+      .messages {
+        padding: 14px 18px;
+      }
+    }
+  </style>
 </head>
 <body>
-    
-      <h1>Socket.IO Example</h1>
-      <input type="text" id="messageInput1" placeholder="Type a message">
-      <button id="sendButton1">Send</button>
+  <main class="chat">
+    <header>
+      <h1>Room Chat</h1>
+      <p class="connection" id="connection-status" role="status">Connecting...</p>
+    </header>
 
+    <form class="room-controls" id="room-form">
+      <input id="room-input" type="text" maxlength="64" placeholder="Room name" aria-label="Room name" required>
+      <button type="submit">Join room</button>
+      <button class="secondary" id="leave-button" type="button" disabled>Leave</button>
+    </form>
 
+    <p class="room-status" id="room-status" role="status">Join a room to start chatting.</p>
+    <ul class="messages" id="messages" aria-live="polite"></ul>
 
-       <h1>Room Management</h1>
-        <input type="text" id="messageInput2" placeholder="Type a message">
-      <button id="sendButton2">join-room</button>
+    <form class="composer" id="message-form">
+      <input id="message-input" type="text" maxlength="2000" placeholder="Type a message..." aria-label="Message" disabled required>
+      <button id="send-button" type="submit" disabled>Send</button>
+    </form>
+  </main>
 
+  <script>
+    const socket = io();
+    const roomForm = document.getElementById("room-form");
+    const roomInput = document.getElementById("room-input");
+    const roomStatus = document.getElementById("room-status");
+    const connectionStatus = document.getElementById("connection-status");
+    const leaveButton = document.getElementById("leave-button");
+    const messageForm = document.getElementById("message-form");
+    const messageInput = document.getElementById("message-input");
+    const sendButton = document.getElementById("send-button");
+    const messages = document.getElementById("messages");
 
+    let activeRoom = "";
+    let requestedRoom = "";
 
-      <h2>Leave Room</h2>
-      <input type="text" id="messageInput3" placeholder="Type a message">
-      <button id="sendButton3">leave-room</button>
+    function updateControls() {
+      const canChat = Boolean(activeRoom && socket.connected);
+      messageInput.disabled = !canChat;
+      sendButton.disabled = !canChat;
+      leaveButton.disabled = !activeRoom;
+    }
 
+    function addMessage(text, className = "") {
+      const item = document.createElement("li");
+      item.className = className;
+      item.textContent = text;
+      messages.appendChild(item);
+      messages.scrollTop = messages.scrollHeight;
+    }
 
+    socket.on("connect", () => {
+      connectionStatus.textContent = "Connected";
+      updateControls();
+      if (activeRoom) {
+        socket.emit("join-room", activeRoom);
+      }
+    });
 
+    socket.on("disconnect", () => {
+      connectionStatus.textContent = "Disconnected. Reconnecting...";
+      updateControls();
+    });
 
-       <script>
+    roomForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const room = roomInput.value.trim();
+      if (!room) {
+        roomStatus.textContent = "Enter a room name first.";
+        return;
+      }
 
-            const socket = io();
+      requestedRoom = room;
+      if (activeRoom && activeRoom !== room) {
+        socket.emit("leave-room", activeRoom);
+        return;
+      }
+      if (activeRoom === room) {
+        roomStatus.textContent = `You are already in #${room}.`;
+        return;
+      }
+      socket.emit("join-room", room);
+    });
 
-            const input = document.getElementById('messageInput1');
-            const button1 = document.getElementById('sendButton1');
-            const input2 = document.getElementById('messageInput2');
-            const input3 = document.getElementById('messageInput3');
-            const button2 = document.getElementById('sendButton2');
-            const button3 = document.getElementById('sendButton3');
-                    
-            const room ="";
+    leaveButton.addEventListener("click", () => {
+      if (activeRoom) {
+        requestedRoom = "";
+        socket.emit("leave-room", activeRoom);
+      }
+    });
 
-            button1.addEventListener('click', () => {
-                const message = input.value;
-                socket.emit('message', message);
-                input.value = '';
-            });
+    socket.on("room-joined", (room) => {
+      activeRoom = room;
+      requestedRoom = "";
+      messages.replaceChildren();
+      roomStatus.textContent = `You are chatting in #${room}.`;
+      addMessage(`Joined #${room}.`, "system");
+      updateControls();
+      messageInput.focus();
+    });
 
-            button2.addEventListener('click', () => {
-                const room = document.getElementById('messageInput2').value;
-                socket.emit('join-room', room);
-                room = 
-            });
+    socket.on("room-left", (room) => {
+      if (activeRoom === room) {
+        activeRoom = "";
+        messages.replaceChildren();
+        roomStatus.textContent = `You left #${room}.`;
+        updateControls();
+      }
 
-            button3.addEventListener('click', () => {
-                const room = document.getElementById('messageInput2').value;
-                socket.emit('leave-room', room);
-            });
+      if (requestedRoom && requestedRoom !== room) {
+        socket.emit("join-room", requestedRoom);
+      }
+    });
 
-            socket.on('message', (data) => {
-                console.log('Received message:', data);
-            });
+    socket.on("room-error", (error) => {
+      roomStatus.textContent = error;
+      requestedRoom = "";
+    });
 
-            </script>
+    messageForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const message = messageInput.value.trim();
+      if (!activeRoom || !message) {
+        return;
+      }
+
+      socket.emit("message", { room: activeRoom, message });
+      messageInput.value = "";
+      messageInput.focus();
+    });
+
+    socket.on("message", (data) => {
+      if (!data || data.room !== activeRoom || typeof data.message !== "string") {
+        return;
+      }
+
+      const sender = data.sender === socket.id ? "You" : "Someone";
+      addMessage(`${sender}: ${data.message}`, data.sender === socket.id ? "own" : "");
+    });
+  </script>
 </body>
 </html>

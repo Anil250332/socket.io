@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    
+      <h1>Socket.IO Example</h1>
+      <input type="text" id="messageInput1" placeholder="Type a message">
+      <button id="sendButton1">Send</button>
+
+
+
+       <h1>Room Management</h1>
+        <input type="text" id="messageInput2" placeholder="Type a message">
+      <button id="sendButton2">join-room</button>
+
+
+
+      <h2>Leave Room</h2>
+      <input type="text" id="messageInput3" placeholder="Type a message">
+      <button id="sendButton3">leave-room</button>
+
+
+
+
+       <script>
+
+            const socket = io();
+
+            const input = document.getElementById('messageInput1');
+            const button1 = document.getElementById('sendButton1');
+            const input2 = document.getElementById('messageInput2');
+            const input3 = document.getElementById('messageInput3');
+            const button2 = document.getElementById('sendButton2');
+            const button3 = document.getElementById('sendButton3');
+                    
+            const room ="";
+
+            button1.addEventListener('click', () => {
+                const message = input.value;
+                socket.emit('message', message);
+                input.value = '';
+            });
+
+            button2.addEventListener('click', () => {
+                const room = document.getElementById('messageInput2').value;
+                socket.emit('join-room', room);
+                room = 
+            });
+
+            button3.addEventListener('click', () => {
+                const room = document.getElementById('messageInput2').value;
+                socket.emit('leave-room', room);
+            });
+
+            socket.on('message', (data) => {
+                console.log('Received message:', data);
+            });
+
+            </script>
+</body>
+</html>
